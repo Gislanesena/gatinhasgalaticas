@@ -30,6 +30,16 @@ public class PlayerController : MonoBehaviour
     [Tooltip("Raio da checagem de chão.")]
     [SerializeField] private float groundCheckRadius = 0.1f;
 
+    [Header("Ataque")]
+    [Tooltip("Prefab do projétil que será disparado automaticamente.")]
+    [SerializeField] private GameObject projectilePrefab;
+
+    [Tooltip("Taxa de disparo (intervalo entre tiros em segundos).")]
+    [SerializeField] private float fireRate = 0.6f;
+
+    [Tooltip("Offset de spawn do projétil em relação ao centro do player.")]
+    [SerializeField] private Vector2 projectileOffset = new Vector2(0.5f, 0f);
+
     [Header("Debug")]
     [Tooltip("Se marcado, ignora o ESP32 e usa apenas teclado/gamepad.")]
     [SerializeField] private bool forceKeyboardFallback = false;
@@ -49,6 +59,9 @@ public class PlayerController : MonoBehaviour
     // Buffer de pulo — capturado no Update, consumido no FixedUpdate
     // Evita perder o sinal quando FixedUpdate roda antes do Update no mesmo frame
     private bool _jumpBuffered;
+
+    // Timer de disparo automático
+    private float _fireTimer;
 
     // Hashes do Animator
     private static readonly int IsMovingHash = Animator.StringToHash("IsMoving");
@@ -76,6 +89,18 @@ public class PlayerController : MonoBehaviour
         ESP32SerialReader esp = ESP32SerialReader.Instance;
         if (esp != null && !forceKeyboardFallback && esp.JumpPressed)
             _jumpBuffered = true;
+
+        // ── Disparo automático ────────────────────────────────────────
+        if (projectilePrefab != null)
+        {
+            _fireTimer -= Time.deltaTime;
+            
+            if (_fireTimer <= 0f)
+            {
+                FireProjectile();
+                _fireTimer = fireRate;
+            }
+        }
     }
 
     private void FixedUpdate()
@@ -130,6 +155,27 @@ public class PlayerController : MonoBehaviour
 
     private void OnMove(InputValue value)  => _moveInput = value.Get<Vector2>();
     private void OnJump(InputValue value)  { if (value.isPressed) _jumpRequested = true; }
+
+    // ----------------------------------------------------------------
+    // Disparo de projétil
+    // ----------------------------------------------------------------
+
+    /// <summary>Dispara um projétil na direção que o sprite está virado.</summary>
+    private void FireProjectile()
+    {
+        // Calcula a posição de spawn considerando a direção do sprite
+        float direction = Mathf.Sign(transform.localScale.x);
+        Vector2 spawnOffset = new Vector2(projectileOffset.x * direction, projectileOffset.y);
+        Vector3 spawnPosition = transform.position + (Vector3)spawnOffset;
+
+        // Instancia o projétil
+        GameObject proj = Instantiate(projectilePrefab, spawnPosition, Quaternion.identity);
+
+        // Define a direção do projétil
+        Projectile projectileScript = proj.GetComponent<Projectile>();
+        if (projectileScript != null)
+            projectileScript.SetDirection(direction);
+    }
 
     // ----------------------------------------------------------------
     // API pública — dispara reações no OLED do ESP32
